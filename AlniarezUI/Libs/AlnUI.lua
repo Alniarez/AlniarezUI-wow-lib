@@ -43,10 +43,25 @@ end
 --   level         number  frame level
 --   theme         string  "standard" (default) or "gold"
 --   noCloseButton bool    omit the close button (default false)
+--   resizable     bool    show a grip in the bottom-right corner that
+--                         resizes the frame (default false)
+--   minWidth      number  smallest width while resizing
+--                         (default: titleWidth + 40, at least 200)
+--   minHeight     number  smallest height while resizing (default 150)
+--   maxWidth      number  largest width (default: screen width)
+--   maxHeight     number  largest height (default: screen height)
+--   onResize      func    onResize(width, height) when the player lets go
+--                         of the grip; use it to save the size
 --
 -- Returns a hidden, movable frame anchored to CENTER with:
---   frame:SetTheme(name)  switch theme; unknown names use "standard"
---   frame:GetTheme()      current theme name
+--   frame:SetTheme(name)         switch theme; unknown names use "standard"
+--   frame:GetTheme()             current theme name
+--   frame:SetResizeEnabled(bool) turn resizing (and the grip) on or off
+--   frame:IsResizeEnabled()      whether resizing is on
+--   frame:SetClampedSize(w, h)   set the size, kept within the resize
+--                                bounds; use it to restore a saved size
+--   frame.resizeButton           the grip Button (nil until resizing is
+--                                first turned on)
 --   frame.titleText       FontString (nil if no title given)
 --   frame.titleBanner     Texture    (nil if no title given)
 --   frame.closeButton     Button     (nil if noCloseButton)
@@ -70,6 +85,67 @@ end
 
 local function GetDialogTheme(frame)
     return frame.alnTheme
+end
+
+local GRIP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-"
+
+local function ApplyResizeBounds(frame)
+    local b = frame.alnResizeBounds
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(b.minW, b.minH, b.maxW, b.maxH)
+    else
+        -- clients from before SetResizeBounds
+        frame:SetMinResize(b.minW, b.minH)
+        frame:SetMaxResize(b.maxW, b.maxH)
+    end
+end
+
+local function CreateResizeGrip(frame)
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -6, 6)
+    grip:SetFrameLevel(frame:GetFrameLevel() + 10)
+    grip:SetNormalTexture(GRIP .. "Up")
+    grip:SetPushedTexture(GRIP .. "Down")
+    grip:SetHighlightTexture(GRIP .. "Highlight")
+
+    grip:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" and frame:IsResizable() then
+            frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        if frame.alnOnResize then
+            frame.alnOnResize(frame:GetWidth(), frame:GetHeight())
+        end
+    end)
+
+    frame.resizeButton = grip
+    return grip
+end
+
+local function SetResizeEnabled(frame, enabled)
+    enabled = enabled and true or false
+    frame:SetResizable(enabled)
+    if enabled then
+        ApplyResizeBounds(frame)
+        local grip = frame.resizeButton or CreateResizeGrip(frame)
+        grip:Show()
+    elseif frame.resizeButton then
+        frame.resizeButton:Hide()
+    end
+end
+
+local function IsResizeEnabled(frame)
+    return frame:IsResizable() and true or false
+end
+
+local function SetClampedSize(frame, w, h)
+    local b = frame.alnResizeBounds
+    frame:SetSize(
+        math.max(b.minW, math.min(b.maxW, w)),
+        math.max(b.minH, math.min(b.maxH, h)))
 end
 
 function AlnUI:CreateDialog(opts)
@@ -130,6 +206,18 @@ function AlnUI:CreateDialog(opts)
     -- after the banner exists, so the theme can set its texture
     frame:SetTheme(opts.theme)
 
+    frame.alnResizeBounds = {
+        minW = opts.minWidth  or math.max(200, (opts.titleWidth or 0) + 40),
+        minH = opts.minHeight or 150,
+        maxW = opts.maxWidth  or math.floor(UIParent:GetWidth()),
+        maxH = opts.maxHeight or math.floor(UIParent:GetHeight()),
+    }
+    frame.alnOnResize      = opts.onResize
+    frame.SetResizeEnabled = SetResizeEnabled
+    frame.IsResizeEnabled  = IsResizeEnabled
+    frame.SetClampedSize   = SetClampedSize
+    frame:SetResizeEnabled(opts.resizable)
+
     return frame
 end
 
@@ -139,13 +227,19 @@ end
 -- Creates a horizontal row of FontStrings on `parent`.
 --
 -- opts (all optional):
---   anchorTo  frame   frame to anchor the first column to (default parent)
+--   anchorTo  frame   frame to anchor the row to (default parent)
 --   x         number  x offset for the first column (default 0)
---   y         number  y offset for the first column (default 0)
+--   y         number  y offset for the row (default 0)
+--   right     number  inset of the last column from anchorTo's right edge;
+--                     only used when a column has fill (default 0)
 --   font      string  font template for all columns (default "GameFontHighlight")
 --
 -- cols[i]:
---   width    number  column width
+--   width    number  column width (ignored for the fill column)
+--   fill     bool    this column takes whatever width is left between its
+--                    neighbours and follows anchorTo when it resizes; the
+--                    columns after it line up from the right edge. At most
+--                    one column may fill.
 --   justify  string  "LEFT" or "RIGHT" (default "LEFT")
 --   gap      number  gap before this column from the previous (default 0)
 --   text     string  initial text (optional)
@@ -162,26 +256,180 @@ function AlnUI:CreateColumnRow(parent, opts, cols)
     local x        = opts.x or 0
     local y        = opts.y or 0
     local result   = {}
-    local prev     = nil
+
+    local fillIndex
+    for i, col in ipairs(cols) do
+        if col.fill then
+            assert(not fillIndex, "AlnUI:CreateColumnRow: only one column can fill")
+            fillIndex = i
+        end
+    end
 
     for i, col in ipairs(cols) do
         local fs = parent:CreateFontString(nil, "OVERLAY", font)
-        fs:SetWidth(col.width)
+        if not col.fill then fs:SetWidth(col.width) end
         fs:SetJustifyH(col.justify or "LEFT")
         if col.wordWrap == false then fs:SetWordWrap(false) end
         if col.text then fs:SetText(col.text) end
-
-        if i == 1 then
-            fs:SetPoint("TOPLEFT", anchorTo, "TOPLEFT", x, y)
-        else
-            fs:SetPoint("LEFT", prev, "RIGHT", col.gap or 0, 0)
-        end
-
-        prev      = fs
         result[i] = fs
     end
 
+    local n = #cols
+    for i, fs in ipairs(result) do
+        local col = cols[i]
+        if not fillIndex or i < fillIndex then
+            -- left to right from the first column
+            if i == 1 then
+                fs:SetPoint("TOPLEFT", anchorTo, "TOPLEFT", x, y)
+            else
+                fs:SetPoint("LEFT", result[i - 1], "RIGHT", col.gap or 0, 0)
+            end
+        elseif i == fillIndex then
+            -- stretch between the column before it and the one after it
+            if i == 1 then
+                fs:SetPoint("TOPLEFT", anchorTo, "TOPLEFT", x, y)
+            else
+                fs:SetPoint("TOPLEFT", result[i - 1], "TOPRIGHT", col.gap or 0, 0)
+            end
+            if i == n then
+                fs:SetPoint("TOPRIGHT", anchorTo, "TOPRIGHT", -(opts.right or 0), y)
+            else
+                fs:SetPoint("TOPRIGHT", result[i + 1], "TOPLEFT", -(cols[i + 1].gap or 0), 0)
+            end
+        else
+            -- right to left from the last column
+            if i == n then
+                fs:SetPoint("TOPRIGHT", anchorTo, "TOPRIGHT", -(opts.right or 0), y)
+            else
+                fs:SetPoint("TOPRIGHT", result[i + 1], "TOPLEFT", -(cols[i + 1].gap or 0), 0)
+            end
+        end
+    end
+
     return result
+end
+
+--------------------------------------------------
+-- AlnUI:CreateSortHeader(parent, opts, cols) -> header
+--
+-- A column header row whose columns sort when clicked. Lays out exactly
+-- like CreateColumnRow (same opts and cols), so it lines up with rows made
+-- the same way. Clicking a column cycles it through ascending, descending
+-- and unsorted; unsorted means "use your default order". The sorted column
+-- shows the native sort arrow.
+--
+-- opts: everything CreateColumnRow takes (font defaults to
+-- "GameFontNormal" here), plus (all optional):
+--   sortKey    any     initially sorted column key (default none)
+--   ascending  bool    initial direction (default true)
+--   onSort     func    onSort(key, ascending) when a click changes the
+--                      sort; both are nil when the sort was cleared
+--
+-- cols[i]: everything CreateColumnRow takes, plus
+--   key        any     sort key; columns without one are not clickable
+--
+-- Returns a table with:
+--   header:SetSort(key, ascending)  change the sort without calling onSort;
+--                                   key nil clears it, ascending defaults
+--                                   to true
+--   header:GetSort()                key, ascending (nil, nil when unsorted)
+--   header.labels                   the column FontStrings
+--   header.buttons                  clickable Buttons by column index, each
+--                                   with .key and .arrow (the arrow Texture)
+--------------------------------------------------
+
+local SORT_ARROW = "Interface\\Buttons\\UI-SortArrow"
+
+function AlnUI:CreateSortHeader(parent, opts, cols)
+    opts = opts or {}
+
+    local rowOpts = {}
+    for k, v in pairs(opts) do rowOpts[k] = v end
+    rowOpts.font = opts.font or "GameFontNormal"
+
+    local header = {
+        labels  = self:CreateColumnRow(parent, rowOpts, cols),
+        buttons = {},
+    }
+    local sortKey, ascending = opts.sortKey, opts.ascending
+
+    local function Refresh()
+        for i, b in pairs(header.buttons) do
+            local arrow, label = b.arrow, header.labels[i]
+            if b.key == sortKey then
+                -- the texture points down; flip it for ascending
+                if ascending then
+                    arrow:SetTexCoord(0, 0.5625, 1, 0)
+                else
+                    arrow:SetTexCoord(0, 0.5625, 0, 1)
+                end
+                -- beside the text: after it when left-aligned, before it when right-aligned
+                arrow:ClearAllPoints()
+                local offset = label:GetStringWidth() + 4
+                if label:GetJustifyH() == "RIGHT" then
+                    arrow:SetPoint("RIGHT", label, "RIGHT", -offset, 0)
+                else
+                    arrow:SetPoint("LEFT", label, "LEFT", offset, 0)
+                end
+                arrow:Show()
+            else
+                arrow:Hide()
+            end
+        end
+    end
+
+    for i, col in ipairs(cols) do
+        if col.key ~= nil then
+            local label = header.labels[i]
+            local b = CreateFrame("Button", nil, parent)
+            b:SetPoint("TOPLEFT",     label, "TOPLEFT",     -2, 2)
+            b:SetPoint("BOTTOMRIGHT", label, "BOTTOMRIGHT",  2, -2)
+            b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            b.key = col.key
+
+            b.arrow = b:CreateTexture(nil, "OVERLAY")
+            b.arrow:SetTexture(SORT_ARROW)
+            b.arrow:SetSize(9, 8)
+            b.arrow:Hide()
+
+            -- ascending -> descending -> unsorted
+            b:SetScript("OnClick", function()
+                if sortKey ~= col.key then
+                    sortKey, ascending = col.key, true
+                elseif ascending then
+                    ascending = false
+                else
+                    sortKey, ascending = nil, nil
+                end
+                if SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON then
+                    PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+                end
+                Refresh()
+                if opts.onSort then opts.onSort(sortKey, ascending) end
+            end)
+
+            header.buttons[i] = b
+        end
+    end
+
+    if sortKey ~= nil and ascending == nil then ascending = true end
+
+    function header:SetSort(key, asc)
+        if key == nil then
+            sortKey, ascending = nil, nil
+        else
+            sortKey, ascending = key, asc ~= false
+        end
+        Refresh()
+    end
+
+    function header:GetSort()
+        return sortKey, ascending
+    end
+
+    Refresh()
+
+    return header
 end
 
 --------------------------------------------------
@@ -235,8 +483,12 @@ end
 --                      the scroll bar sits outside the right edge
 --   rowHeight  number  (default 20)
 --   x          number  x offset of the first column in a row (default 0)
+--   right      number  inset of the last column from the row's right edge,
+--                      used with a fill column (default 0)
 --   font       string  font template for all columns (default "GameFontHighlight")
---   columns    table   column specs, same as CreateColumnRow's cols
+--   columns    table   column specs, same as CreateColumnRow's cols; give
+--                      one column fill = true to have it take the width
+--                      left over as the list resizes
 --   onRowInit  func    called as onRowInit(row, data) after the column
 --                      text is set. Rows are recycled, so reset anything
 --                      you change here on every call.
@@ -261,15 +513,21 @@ function AlnUI:CreateScrollList(parent, opts)
     local lib       = self
     local rowHeight = opts.rowHeight or 20
     local columns   = opts.columns or {}
+    local font      = opts.font or "GameFontHighlight"
+
+    -- push the text down so a single line sits in the middle of the row
+    local fontObject = _G[font]
+    local _, fontSize = fontObject and fontObject:GetFont()
+    local textY = -math.max(0, math.floor((rowHeight - (fontSize or 12)) / 2))
 
     local function InitRow(row, data)
         if not row.cols then
-            row.cols = lib:CreateColumnRow(row, { font = opts.font }, columns)
-            -- center the row vertically instead of pinning it to the top
-            if row.cols[1] then
-                row.cols[1]:ClearAllPoints()
-                row.cols[1]:SetPoint("LEFT", row, "LEFT", opts.x or 0, 0)
-            end
+            row.cols = lib:CreateColumnRow(row, {
+                font  = font,
+                x     = opts.x,
+                y     = textY,
+                right = opts.right,
+            }, columns)
         end
 
         local values = type(data) == "table" and data or { data }

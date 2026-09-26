@@ -56,32 +56,63 @@ local function SampleRows()
     for i = 1, 200 do
         local char  = math.random(1, 60)
         local total = char + math.random(0, 120)
-        rows[i] = { MOB_NAMES[(i - 1) % #MOB_NAMES + 1] .. " #" .. i, char, total }
+        -- [4] is not a column: it keeps the default (generated) order
+        rows[i] = { MOB_NAMES[(i - 1) % #MOB_NAMES + 1] .. " #" .. i, char, total, i }
     end
-    table.sort(rows, function(a, b) return a[3] > b[3] end)
+    return rows
+end
+
+-- Sort keys are column indexes: 1 = Mob, 2 = Character, 3 = Total.
+-- nil means unsorted: the default order the rows were generated in.
+local sortKey, sortAscending = nil, nil
+
+local function SortRows(rows)
+    table.sort(rows, function(a, b)
+        if sortKey == nil then return a[4] < b[4] end
+        local x, y = a[sortKey], b[sortKey]
+        if sortKey == 1 then x, y = x:lower(), y:lower() end
+        if x == y then return a[1] < b[1] end   -- names are unique: a stable order
+        if sortAscending then return x < y end
+        return x > y
+    end)
     return rows
 end
 
 local function BuildListTab(p)
-    Lib:CreateColumnRow(p, { font = "GameFontNormal", x = 8, y = -4 }, {
-        { text = "Mob",       width = 270 },
-        { text = "Character", width = 90, justify = "RIGHT" },
-        { text = "Total",     width = 90, justify = "RIGHT", gap = 6 },
+    local list
+    local rows = SampleRows()
+
+    -- Click a column: ascending, again: descending, again: default order.
+    -- Mob fills the width left over, so the list follows the window size.
+    -- right = 26: the list's 22 inset for the scroll bar + the rows' 4
+    Lib:CreateSortHeader(p, {
+        x = 8, y = -4, right = 26,
+        sortKey   = sortKey,
+        ascending = sortAscending,
+        onSort    = function(key, ascending)
+            sortKey, sortAscending = key, ascending
+            list:SetData(SortRows(rows), true)
+        end,
+    }, {
+        { text = "Mob",       key = 1, fill = true },
+        { text = "Character", key = 2, width = 90, justify = "RIGHT" },
+        { text = "Total",     key = 3, width = 90, justify = "RIGHT", gap = 6 },
     })
 
     Lib:CreateSeparator(p, { y = -22, x1 = 2, x2 = -2 })
 
-    local list = Lib:CreateScrollList(p, {
+    list = Lib:CreateScrollList(p, {
         x1 = 2,   y1 = -26,
         x2 = -22, y2 = 36,
         rowHeight = 18,
         x         = 6,
+        right     = 4,
         columns   = {
-            { width = 270, wordWrap = false },
+            { fill = true, wordWrap = false },
             { width = 90, justify = "RIGHT" },
             { width = 90, justify = "RIGHT", gap = 6 },
         },
-        data      = SampleRows(),
+        data      = SortRows(rows),
         -- highlight rows with a high total; rows are recycled, so always set it
         onRowInit = function(row, data)
             local hot = data[3] >= 150
@@ -91,7 +122,10 @@ local function BuildListTab(p)
 
     local shuffle = Lib:CreateButton(p, {
         text        = "Shuffle",
-        onClick     = function() list:SetData(SampleRows()) end,
+        onClick     = function()
+            rows = SampleRows()
+            list:SetData(SortRows(rows))
+        end,
         tooltip     = "Shuffle",
         tooltipText = "Replace all 200 rows. Keeps the scroll position.",
     })
@@ -99,14 +133,20 @@ local function BuildListTab(p)
 
     local top = Lib:CreateButton(p, {
         text    = "Shuffle + Top",
-        onClick = function() list:SetData(SampleRows(), true) end,
+        onClick = function()
+            rows = SampleRows()
+            list:SetData(SortRows(rows), true)
+        end,
         tooltip = "Shuffle and scroll back to the top",
     })
     top:SetPoint("LEFT", shuffle, "RIGHT", 8, 0)
 
     local clear = Lib:CreateButton(p, {
         text    = "Empty List",
-        onClick = function() list:SetData({}) end,
+        onClick = function()
+            rows = {}
+            list:SetData(rows)
+        end,
     })
     clear:SetPoint("LEFT", top, "RIGHT", 8, 0)
 end
@@ -566,6 +606,12 @@ local function BuildDemo()
         height     = 500,
         theme      = "gold",
         strata     = "DIALOG",
+        -- drag the bottom-right grip; the List tab follows the new size
+        resizable  = true,
+        minWidth   = 540,
+        minHeight  = 500,
+        maxWidth   = 1000,
+        maxHeight  = 800,
     })
 
     local panels = { NewPanel(f), NewPanel(f), NewPanel(f), NewPanel(f) }
@@ -589,7 +635,11 @@ local function BuildDemo()
     end
 
     Lib:CreateSeparator(f, { y = -60, x1 = 16, x2 = -16, color = GOLD, thickness = 1 })
-    Lib:CreateSeparator(f, { y = -454, x1 = 16, x2 = -16 })
+    -- anchored to the bottom so it stays above the buttons while resizing
+    local bottomLine = Lib:CreateSeparator(f, { x1 = 16, x2 = -16 })
+    bottomLine:ClearAllPoints()
+    bottomLine:SetPoint("BOTTOMLEFT", 16, 46)
+    bottomLine:SetPoint("BOTTOMRIGHT", -16, 46)
 
     local runBtn = Lib:CreateButton(f, {
         text    = "Run Tests",

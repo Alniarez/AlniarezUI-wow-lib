@@ -112,6 +112,41 @@ T:Describe("CreateScrollList", function()
         end)
     end)
 
+    T:ItAsync("fits a fill column to the list width as it resizes", 3, function(t)
+        local host = NewVisibleHost()
+        local list = New(host, {
+            x       = 6,
+            right   = 4,
+            columns = { { fill = true, wordWrap = false }, { width = 60, justify = "RIGHT" } },
+            data    = { { "A long name", 12 } },
+        })
+        local function Fill()
+            local row = next((Rows(list)))
+            A.NotNil(row, "row")
+            return row.cols[1]:GetWidth(), row.cols[2]:GetWidth()
+        end
+
+        t:After(0.1, function()
+            local fill, fixed = Fill()
+            -- the list fills the 300 wide host: 300 - 6 - 60 - 4
+            A.Near(fill,  230, "fill width")
+            A.Near(fixed, 60,  "fixed width")
+
+            -- text sits in the middle of the default 20 high row
+            local _, size = GameFontHighlight:GetFont()
+            local _, _, _, y = ns.FindPoint(next((Rows(list))).cols[1], "TOPLEFT")
+            A.Near(y, -math.floor((20 - size) / 2), "text offset")
+
+            host:SetWidth(400)
+        end)
+
+        t:After(0.25, function()
+            A.Near((Fill()), 330, "fill width after the list grew")
+            host:Hide()
+            t:Done()
+        end)
+    end)
+
     T:ItAsync("calls onRowInit with row and data", 3, function(t)
         local host = NewVisibleHost()
         local seen = {}

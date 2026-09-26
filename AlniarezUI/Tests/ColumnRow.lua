@@ -86,6 +86,81 @@ T:Describe("CreateColumnRow", function()
         A.Equal(cols[1]:GetParent(), parent, "still parented to parent")
     end)
 
+    -- fill columns ----------------------------------------------------------
+
+    T:It("stretches a middle fill column between its neighbours", function()
+        local parent = NewParent()
+        parent:SetPoint("CENTER")
+        local cols = Lib:CreateColumnRow(parent, { right = 10 }, {
+            { width = 100 },
+            { fill = true, gap = 4 },
+            { width = 60, gap = 6 },
+        })
+        -- 400 - 100 - 4 - 6 - 60 - 10
+        A.Near(cols[2]:GetWidth(), 220, "fill width")
+    end)
+
+    T:It("lines up columns after the fill from the right edge", function()
+        local parent = NewParent()
+        local cols = Lib:CreateColumnRow(parent, { right = 10, y = -5 }, {
+            { fill = true },
+            { width = 50, gap = 4 },
+            { width = 60, gap = 6 },
+        })
+        local rel, relPoint, x, y = ns.FindPoint(cols[3], "TOPRIGHT")
+        A.Equal(rel, parent, "last column relativeTo")
+        A.Equal(relPoint, "TOPRIGHT", "last column relativePoint")
+        A.Near(x, -10, "right inset")
+        A.Near(y, -5,  "y")
+
+        rel, relPoint, x = ns.FindPoint(cols[2], "TOPRIGHT")
+        A.Equal(rel, cols[3], "middle column relativeTo")
+        A.Equal(relPoint, "TOPLEFT", "middle column relativePoint")
+        A.Near(x, -6, "gap before the last column")
+    end)
+
+    T:It("stretches a first-column fill from x to the next column", function()
+        local parent = NewParent()
+        parent:SetPoint("CENTER")
+        local cols = Lib:CreateColumnRow(parent, { x = 8 }, {
+            { fill = true },
+            { width = 90, gap = 6 },
+        })
+        -- 400 - 8 - 6 - 90
+        A.Near(cols[1]:GetWidth(), 296, "fill width")
+    end)
+
+    T:It("stretches a last-column fill to the right inset", function()
+        local parent = NewParent()
+        parent:SetPoint("CENTER")
+        local cols = Lib:CreateColumnRow(parent, { right = 20 }, {
+            { width = 150 },
+            { fill = true, gap = 10 },
+        })
+        -- 400 - 150 - 10 - 20
+        A.Near(cols[2]:GetWidth(), 220, "fill width")
+    end)
+
+    T:It("grows the fill column when the parent grows", function()
+        local parent = NewParent()
+        parent:SetPoint("CENTER")
+        local cols = Lib:CreateColumnRow(parent, nil, {
+            { fill = true },
+            { width = 100 },
+        })
+        local before = cols[1]:GetWidth()
+        parent:SetWidth(500)
+        A.Near(cols[1]:GetWidth() - before, 100, "extra fill width")
+        A.Near(cols[2]:GetWidth(), 100, "fixed column width")
+    end)
+
+    T:It("errors with more than one fill column", function()
+        local ok = pcall(Lib.CreateColumnRow, Lib, NewParent(), nil, {
+            { fill = true }, { fill = true },
+        })
+        A.False(ok, "created a row with two fill columns")
+    end)
+
     T:It("chains later columns LEFT to the previous RIGHT with gap", function()
         local cols = Lib:CreateColumnRow(NewParent(), nil, {
             { width = 100 },
