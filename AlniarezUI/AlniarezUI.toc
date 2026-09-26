@@ -1,0 +1,32 @@
+## Interface: 120007, 20505, 50504, 11508, 120100, 16001
+## Title: Alniarez UI Test Suite
+## Notes: Automated tests and a visual demo for the AlnUI library. /alnui
+## Version: 0.1.0
+## Author: Alniarez
+## IconTexture: Interface\Icons\inv_misc_gear_01
+## Category: Development Tools
+## SavedVariables: AlniarezUIDB
+
+Libs/AlnUI.lua
+Harness.lua
+
+Tests/Dialog.lua
+Tests/ColumnRow.lua
+Tests/ScrollFrame.lua
+Tests/ScrollList.lua
+Tests/Separator.lua
+Tests/Slider.lua
+Tests/Checkbox.lua
+Tests/Button.lua
+Tests/Toast.lua
+Tests/Tooltip.lua
+Tests/Label.lua
+Tests/EditBox.lua
+Tests/IconButton.lua
+Tests/ProgressBar.lua
+Tests/RadioGroup.lua
+Tests/Tabs.lua
+Tests/Dropdown.lua
+
+Demo.lua
+Main.lua
