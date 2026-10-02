@@ -54,11 +54,12 @@ local function BuildResultsFrame()
     local f = Lib:CreateDialog({
         name       = "AlniarezUIResultsFrame",
         title      = "AlnUI Tests",
-        titleWidth = 260,
         width      = 560,
         height     = 460,
         strata     = "DIALOG",
     })
+
+    ns.AddVersionLabel(f)
 
     resultsSummary = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     resultsSummary:SetPoint("TOPLEFT", 24, -36)
@@ -221,9 +222,8 @@ function ns.TogglePanel()
     if firstOpen then
         resultsSummary:SetText(GREY .. T:Count() .. " tests ready. Press Run to start.|r")
     end
+    -- dialogs come to the front on their own when shown
     resultsFrame:SetShown(not resultsFrame:IsShown())
-    -- same strata as the demo window, so bring it to the front
-    if resultsFrame:IsShown() then resultsFrame:Raise() end
 end
 
 --------------------------------------------------
@@ -286,8 +286,8 @@ local copyText = ""
 local function ResultsAsText(results)
     local version, build = GetBuildInfo()
     local out = {
-        string.format("AlnUI test results - %s - client %s (%s)",
-            date("%Y-%m-%d %H:%M"), version, build),
+        string.format("%s test results - %s - client %s (%s)",
+            ns.VersionText(), date("%Y-%m-%d %H:%M"), version, build),
         string.format("%d passed, %d failed (%.2fs)%s",
             results.passed, results.failed, results.elapsed,
             results.stopped and " - stopped" or ""),
@@ -313,7 +313,6 @@ local function BuildCopyFrame()
     local f = Lib:CreateDialog({
         name       = "AlniarezUICopyFrame",
         title      = "Copy Results",
-        titleWidth = 260,
         width      = 560,
         height     = 420,
         strata     = "FULLSCREEN_DIALOG",
@@ -373,13 +372,16 @@ end
 
 local function PrintHelp()
     print("|cff33ff99AlniarezUI commands:|r")
-    print("|cffffff00/alnui|r " .. GREY .. "- toggle the test panel|r")
+    print("|cffffff00/alnui|r " .. GREY .. "- open the Learn AlnUI window (also /alnui learn)|r")
+    print("|cffffff00/alnui tests|r " .. GREY .. "- toggle the Test window|r")
     print("|cffffff00/alnui run|r " .. GREY .. "- run all tests (with the saved delay)|r")
     print("|cffffff00/alnui fast|r " .. GREY .. "- run all tests with no delay|r")
     print("|cffffff00/alnui stop|r " .. GREY .. "- stop the current run|r")
     print("|cffffff00/alnui delay <seconds>|r " .. GREY .. "- set the delay per test (0-" .. MAX_DELAY .. ")|r")
     print("|cffffff00/alnui copy|r " .. GREY .. "- open the last results as copyable text|r")
-    print("|cffffff00/alnui demo|r " .. GREY .. "- toggle the widget demo window|r")
+    print("|cffffff00/alnui demo|r " .. GREY .. "- toggle the Demo window|r")
+    print("|cffffff00/alnui demos|r " .. GREY .. "- toggle one Demo window per theme|r")
+    print("|cffffff00/alnui toasts|r " .. GREY .. "- show every kind of toast in every theme|r")
     print("|cffffff00/alnui help|r " .. GREY .. "- show this help|r")
 end
 
@@ -388,7 +390,9 @@ SLASH_ALNUITEST2 = "/alnuitest"
 SlashCmdList["ALNUITEST"] = function(msg)
     local cmd, arg = strtrim((msg or ""):lower()):match("^(%S*)%s*(.-)$")
 
-    if cmd == "" then
+    if cmd == "" or cmd == "learn" then
+        ns.ToggleLearn()
+    elseif cmd == "tests" then
         SafeUI(ns.TogglePanel)
     elseif cmd == "run" then
         ns.RunTests()
@@ -409,6 +413,10 @@ SlashCmdList["ALNUITEST"] = function(msg)
         ns.CopyResults()
     elseif cmd == "demo" then
         ns.ToggleDemo()
+    elseif cmd == "demos" then
+        ns.ToggleThemeDemos()
+    elseif cmd == "toasts" then
+        ns.ShowToastGallery()
     else
         PrintHelp()
     end

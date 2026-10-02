@@ -7,14 +7,49 @@ local ADDON_NAME, ns = ...
 --------------------------------------------------
 -- Library snapshot
 --
--- Every addon that embeds AlnUI writes into the same global table, and
--- whichever copy loads last wins. Snapshot the functions right after our
--- own copy loaded so the suite always tests this folder's Libs/AlnUI.lua.
+-- Every addon that embeds AlnUI shares one global table, and the newest
+-- copy loaded wins. Snapshot it right after this folder's copy loaded, so
+-- a newer copy from an addon loading later cannot change what the suite
+-- tests.
+--
+-- If a newer copy had already loaded, this folder's copy stopped at its
+-- version check, and the snapshot is that other copy. The suite then says
+-- so: its results are not about this folder's Libs/AlnUI.lua.
 --------------------------------------------------
 
 local Lib = {}
 for k, v in pairs(AlnUI) do Lib[k] = v end
 ns.Lib = Lib
+
+-- true when the snapshot is this folder's copy
+ns.TestsOwnLibrary = AlnUI.loadedFrom == ADDON_NAME
+
+-- "AlnUI v1", plus where it came from when it is not this folder's copy
+function ns.VersionText()
+    local text = "AlnUI v" .. tostring(Lib.version)
+    if not ns.TestsOwnLibrary then
+        text = text .. " (from " .. tostring(Lib.loadedFrom) .. ")"
+    end
+    return text
+end
+
+-- Shows the version in the top-left corner of window `f`: grey, or red
+-- when the suite is not using this folder's copy
+function ns.AddVersionLabel(f)
+    local fs = Lib:CreateLabel(f, {
+        text  = ns.VersionText(),
+        font  = "GameFontHighlightSmall",
+        color = ns.TestsOwnLibrary and { 0.6, 0.6, 0.6 } or { 1, 0.33, 0.33 },
+    })
+    fs:SetPoint("TOPLEFT", 20, -14)
+    f.versionLabel = fs
+    return fs
+end
+if not ns.TestsOwnLibrary then
+    print("|cff33ff99" .. ADDON_NAME .. ":|r |cffff5555the tests are using AlnUI version "
+        .. tostring(AlnUI.version) .. " from " .. tostring(AlnUI.loadedFrom)
+        .. ", which is newer than this folder's copy.|r")
+end
 
 --------------------------------------------------
 -- Sandbox

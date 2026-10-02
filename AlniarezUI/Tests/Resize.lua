@@ -45,6 +45,19 @@ T:Describe("Dialog resizing", function()
         A.Equal(relPoint, "BOTTOMRIGHT", "grip relativePoint")
     end)
 
+    T:It("places the grip per theme", function()
+        local f = New({ resizable = true })
+        local _, _, x, y = ns.FindPoint(f.resizeButton, "BOTTOMRIGHT")
+        A.Near(x, -6, "standard x")
+        A.Near(y,  6, "standard y")
+        if not Lib:HasTheme("modern") then return end
+        f:SetTheme("modern")
+        A.Equal(f.resizeButton:GetNumPoints(), 1, "number of anchors")
+        _, _, x, y = ns.FindPoint(f.resizeButton, "BOTTOMRIGHT")
+        A.Near(x, -4, "modern x")
+        A.Near(y,  4, "modern y")
+    end)
+
     T:It("uses the chat window grip textures", function()
         local grip = New({ resizable = true }).resizeButton
         A.NotNil(grip:GetNormalTexture(),    "normal texture")
@@ -69,6 +82,11 @@ T:Describe("Dialog resizing", function()
     T:It("keeps the title banner inside the default min width", function()
         local minW = Bounds(New({ resizable = true, title = "Hi", titleWidth = 300 }))
         A.True(minW >= 340, "min width (" .. tostring(minW) .. ") fits the 300 wide banner")
+    end)
+
+    T:It("does not let a long title block shrinking", function()
+        local minW = Bounds(New({ resizable = true, title = string.rep("A really very long dialog title ", 8) }))
+        A.True(minW <= 400, "min width (" .. tostring(minW) .. ") stays at most 400")
     end)
 
     T:It("uses at least 200x150 as the default minimum", function()

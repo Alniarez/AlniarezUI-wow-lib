@@ -3,10 +3,34 @@
 -- what the automated tests can't: textures, fonts, spacing, dragging.
 -- Four tabs: List, Inputs, Buttons, Feedback.
 
-local _, ns = ...
+local ADDON_NAME, ns = ...
 local Lib = ns.Lib
 
+--------------------------------------------------
+-- Configuration
+--------------------------------------------------
+
+local DEBUG = false -- print the windows' frame levels when the demo opens
+
+local function DebugPrint(...)
+    if DEBUG then print("|cff33ff99" .. ADDON_NAME .. ":|r", ...) end
+end
+
+-- strata and level of the test and demo windows and their close buttons
+local function DebugLevels(when)
+    for _, name in ipairs({ "AlniarezUIResultsFrame", "AlniarezUIDemoFrame" }) do
+        local f = _G[name]
+        if f and f:IsShown() then
+            local c = f.closeButton
+            DebugPrint(when, name, f:GetFrameStrata(), f:GetFrameLevel(),
+                "close", c:GetFrameStrata(), c:GetFrameLevel(),
+                "fixed", c.HasFixedFrameLevel and tostring(c:HasFixedFrameLevel()) or "?")
+        end
+    end
+end
+
 local demo
+local themeDemos -- one window per theme, for /alnui demos
 
 local GOLD = { 1, 0.82, 0 }
 local GREY = { 0.7, 0.7, 0.7 }
@@ -507,11 +531,13 @@ local function BuildFeedbackTab(p)
     Lib:CreateSeparator(p, { y = -246, x1 = 2, x2 = -2 })
 
     Heading(p, "Toasts", 8, -256)
+    -- { button text, button width, toast opts }
     local toasts = {
-        { "Gold",     { title = "Gold Toast",     text = "The default theme.", icon = "Interface\\Icons\\INV_Misc_Coin_01" } },
-        { "Standard", { title = "Standard Toast", text = "The standard theme.", theme = "standard", icon = "Interface\\Icons\\INV_Misc_Note_01" } },
-        { "No Icon",  { title = "No Icon",        text = "Text stays centered." } },
-        { "Long",     { title = "Long Toast",     text = "Stays up for 8 seconds.", duration = 8, width = 480 } },
+        { "Gold",     60, { title = "Gold Toast",     text = "The default theme.", icon = "Interface\\Icons\\INV_Misc_Coin_01" } },
+        { "Standard", 76, { title = "Standard Toast", text = "The standard theme.", theme = "standard", icon = "Interface\\Icons\\INV_Misc_Note_01" } },
+        { "No Icon",  70, { title = "No Icon",        text = "Text stays centered." } },
+        -- the countdown bar along the bottom shows how long it has left
+        { "Long",     56, { title = "Long Toast",     text = "Stays up for 8 seconds.", duration = 8, width = 480, timer = true } },
     }
 
     local function Toast(extra)
@@ -522,21 +548,45 @@ local function BuildFeedbackTab(p)
 
     local prev
     local function Place(b)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", 8, -276) end
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 6, 0) else b:SetPoint("TOPLEFT", 8, -276) end
         prev = b
     end
 
     for _, t in ipairs(toasts) do
         Place(Lib:CreateButton(p, {
             text    = t[1],
-            width   = 76,
-            onClick = function() Toast(t[2]) end,
+            width   = t[2],
+            onClick = function() Toast(t[3]) end,
         }))
     end
 
+    -- a progress toast whose bar fills while it shows, like a quest objective
+    Place(Lib:CreateButton(p, {
+        text        = "Progress",
+        width       = 74,
+        tooltip     = "Progress toast",
+        tooltipText = "A toast with a progress bar that fills while it shows.",
+        onClick     = function()
+            local toast = Lib:ShowToast({
+                title    = "Defias Pillagers slain",
+                icon     = "Interface\\Icons\\INV_Sword_04",
+                duration = 6,
+                progress = { value = 0, max = 10 },
+            })
+            local ticker
+            ticker = C_Timer.NewTicker(0.4, function()
+                if toast.alnState == "done" then ticker:Cancel() return end
+                if toast.alnState ~= "showing" then return end   -- still queued
+                local value = toast.bar:GetValue() + 1
+                toast.bar:SetValue(value)
+                if value >= 10 then ticker:Cancel() end
+            end)
+        end,
+    }))
+
     Place(Lib:CreateButton(p, {
         text        = "Queue 3",
-        width       = 76,
+        width       = 70,
         tooltip     = "Queue 3",
         tooltipText = "Shows three toasts one after another.",
         onClick     = function()
@@ -548,7 +598,7 @@ local function BuildFeedbackTab(p)
 
     Place(Lib:CreateButton(p, {
         text    = "Clear",
-        width   = 64,
+        width   = 52,
         onClick = function() Lib:ClearToasts() end,
     }))
 
@@ -597,14 +647,15 @@ end
 -- Window
 --------------------------------------------------
 
-local function BuildDemo()
+-- opts (all optional): name, title and theme of the window
+local function BuildDemo(opts)
+    opts = opts or {}
     local f = Lib:CreateDialog({
-        name       = "AlniarezUIDemoFrame",
-        title      = "AlnUI Demo",
-        titleWidth = 260,
+        name       = opts.name or "AlniarezUIDemoFrame",
+        title      = opts.title or "AlnUI Demo",
         width      = 540,
         height     = 500,
-        theme      = "gold",
+        theme      = opts.theme or "gold",
         strata     = "DIALOG",
         -- drag the bottom-right grip; the List tab follows the new size
         resizable  = true,
@@ -613,6 +664,8 @@ local function BuildDemo()
         maxWidth   = 1000,
         maxHeight  = 800,
     })
+
+    ns.AddVersionLabel(f)
 
     local panels = { NewPanel(f), NewPanel(f), NewPanel(f), NewPanel(f) }
     BuildListTab(panels[1])
@@ -678,7 +731,99 @@ end
 
 function ns.ToggleDemo()
     demo = demo or BuildDemo()
+    -- dialogs come to the front on their own when shown
     demo:SetShown(not demo:IsShown())
-    -- same strata as the test window, so bring it to the front
-    if demo:IsShown() then demo:Raise() end
+
+    if DEBUG and demo:IsShown() then
+        DebugLevels("open")
+        -- again a moment later, in case the client changes them afterwards
+        C_Timer.After(0.1, function() DebugLevels("0.1s") end)
+    end
+end
+
+-- One demo window per theme, stepped down and to the right so they
+-- overlap, for checking themes side by side and how windows stack.
+-- Hides them all if any is showing.
+function ns.ToggleThemeDemos()
+    if not themeDemos then
+        themeDemos = {}
+        local names = Lib:GetThemes()
+        local mid = (#names + 1) / 2
+        for i, theme in ipairs(names) do
+            local label = theme:sub(1, 1):upper() .. theme:sub(2)
+            local f = BuildDemo({
+                name  = "AlniarezUIDemoFrame_" .. theme,
+                title = "AlnUI Demo: " .. label,
+                theme = theme,
+            })
+            f:ClearAllPoints()
+            f:SetPoint("CENTER", (i - mid) * 80, -(i - mid) * 60)
+            themeDemos[i] = f
+        end
+    end
+
+    local anyShown = false
+    for _, f in ipairs(themeDemos) do
+        if f:IsShown() then anyShown = true end
+    end
+    -- shown in order, so the last theme ends up on top
+    for _, f in ipairs(themeDemos) do f:SetShown(not anyShown) end
+end
+
+--------------------------------------------------
+-- Toast gallery
+--
+-- Every kind of toast in every theme, all on screen at once in a grid:
+-- one column per theme, one row per kind. For comparing them side by
+-- side; /alnui toasts.
+--------------------------------------------------
+
+local GALLERY_W, GALLERY_H = 300, 90   -- one toast, narrower when the screen needs it
+local GALLERY_GAP          = 8
+
+-- the kinds of toast, one row each
+local GALLERY_KINDS = {
+    { name = "Title and text" },
+    { name = "With an icon", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
+    { name = "Progress bar", icon = "Interface\\Icons\\INV_Sword_04",
+      progress = { value = 6, max = 10 } },
+    { name = "Countdown bar", timer = true },
+    { name = "Everything", icon = "Interface\\Icons\\INV_Misc_Note_01",
+      progress = { value = 3, max = 10 }, timer = true },
+}
+
+-- Shows the gallery, replacing any toasts already showing, and returns
+-- the toasts it made
+function ns.ShowToastGallery()
+    Lib:ClearToasts()
+    local themes = Lib:GetThemes("toast")
+    local mid = (#themes + 1) / 2
+    local toasts = {}
+    -- every column on screen, with a margin on each side
+    local width = math.min(GALLERY_W,
+        math.floor((UIParent:GetWidth() - 40) / #themes) - GALLERY_GAP)
+
+    for col, theme in ipairs(themes) do
+        local label = theme:sub(1, 1):upper() .. theme:sub(2)
+        for row, kind in ipairs(GALLERY_KINDS) do
+            local f = Lib:ShowToast({
+                title    = label,
+                text     = kind.name,
+                icon     = kind.icon,
+                progress = kind.progress,
+                timer    = kind.timer,
+                theme    = theme,
+                width    = width,
+                height   = GALLERY_H,
+                duration = 12,
+                queue    = false,   -- all at once, not one after another
+            })
+            f:ClearAllPoints()
+            f:SetPoint("TOP", UIParent, "TOP",
+                (col - mid) * (width + GALLERY_GAP),
+                -60 - (row - 1) * (GALLERY_H + GALLERY_GAP))
+            table.insert(toasts, f)
+        end
+    end
+    return toasts
 end
