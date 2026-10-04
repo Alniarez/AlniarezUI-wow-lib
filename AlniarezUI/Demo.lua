@@ -10,7 +10,7 @@ local Lib = ns.Lib
 -- Configuration
 --------------------------------------------------
 
-local DEBUG = false -- print the windows' frame levels when the demo opens
+local DEBUG = AlniDev and AlniDev.debug[ADDON_NAME] or false -- print the windows' frame levels when the demo opens
 
 local function DebugPrint(...)
     if DEBUG then print("|cff33ff99" .. ADDON_NAME .. ":|r", ...) end
