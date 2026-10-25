@@ -11,3 +11,9 @@ The library is the single file `Libs/AlnUI.lua`. Copy it into an addon and list 
 - `/alnui run` - Run all tests
 - `/alnui demo` - Demo window
 - `/alnui help` - All commands
+
+---
+
+Found a bug or have an idea? Open an issue on [GitHub](https://github.com/Alniarez/AlniarezUI-wow-lib/issues) or leave a comment on CurseForge.
+
+More addons: [CurseForge](https://www.curseforge.com/members/alniarez/projects)
