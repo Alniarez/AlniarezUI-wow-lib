@@ -1844,20 +1844,127 @@ AlnUI:ShowToast({
 /alnui help         -- list the commands]==],
     },
     {
-        key = "embedding", name = "Embedding AlnUI",
-        text = "AlnUI is one file: copy Libs/AlnUI.lua into your addon and load it before your own "
-            .. "files. It is made for Retail and WoW Forever. Parts that need templates some "
-            .. "clients lack (tabs, the modern dropdown, the modern and tooltip themes) check for "
-            .. "them first.",
+        key = "settingspage", name = "Options page",
+        text = "Your addon's page in Options -> AddOns, laid out like Blizzard's own pages but drawn "
+            .. "on a frame your addon owns (a canvas). It is in Libs/AlnUISettings.lua. Blizzard's "
+            .. "own option rows are shared with its pages, so addon code on them can get Blizzard's "
+            .. "Discord settings blocked; a canvas page never touches them.",
         features = {
-            "List Libs/AlnUI.lua in your .toc before the files that use AlnUI",
+            "AlnUI:CreateSettingsPage({ name }) makes an empty page; add rows in the order they show",
+            "page:AddHeader(text), page:AddCheckbox(o), page:AddDropdown(o), page:AddSlider(o), page:AddButton(o)",
+            "Each row reads its value with o.get() whenever the page shows, and o.set(value) saves a change",
+            "o.tooltip on every row; o.indent for an option under the one above; o.enabled() greys a row out",
+            "page:Register() adds it to Options -> AddOns and returns the category (Register(parent) for a subpage)",
+            "page:Open() opens Settings on the page; page:Refresh() re-reads every value",
+            "Its options don't show in the Settings search",
+        },
+        demo = "",
+        example = function(p)
+            local values = { enabled = true, size = "medium", scale = 100 }
+            local page = Lib:CreateSettingsPage({ name = "My Addon" })
+            page:AddHeader("General")
+            page:AddCheckbox({
+                label = "Enable", tooltip = "Turns the addon on.",
+                get = function() return values.enabled end,
+                set = function(v)
+                    values.enabled = v
+                    page:Refresh()
+                end,
+            })
+            page:AddDropdown({
+                label = "Size", indent = true,
+                options = { { value = "small", label = "Small" }, { value = "medium", label = "Medium" },
+                    { value = "large", label = "Large" } },
+                get = function() return values.size end,
+                set = function(v) values.size = v end,
+                enabled = function() return values.enabled end,
+            })
+            page:AddSlider({
+                label = "Scale", min = 50, max = 150, step = 10,
+                format = function(v) return v .. "%" end,
+                get = function() return values.scale end,
+                set = function(v) values.scale = v end,
+            })
+            page:AddButton({
+                label = "Reset", text = "Reset to defaults",
+                onClick = function()
+                    values.enabled, values.size, values.scale = true, "medium", 100
+                    page:Refresh()
+                end,
+            })
+            -- shown here instead of registered, so the game's Settings stay untouched
+            page:SetParent(p)
+            page:SetAllPoints(p)
+            page:Show()
+        end,
+        code = [==[
+-- in MyAddon.toc: Libs/AlnUISettings.lua before MyAddon.lua, and
+-- ## SavedVariables: MyAddonDB
+
+local f = CreateFrame("Frame")
+f:RegisterEvent("ADDON_LOADED")
+f:SetScript("OnEvent", function(self, _, name)
+    if name ~= "MyAddon" then
+        return
+    end
+    self:UnregisterEvent("ADDON_LOADED")
+    MyAddonDB = MyAddonDB or { enabled = true, size = "medium", scale = 100 }
+    local db = MyAddonDB
+
+    local page = AlnUI:CreateSettingsPage({ name = "My Addon" })
+    page:AddHeader("General")
+    page:AddCheckbox({
+        label   = "Enable",
+        tooltip = "Turns the addon on.",
+        get     = function() return db.enabled end,
+        -- refresh so the rows that depend on it grey out
+        set     = function(v)
+            db.enabled = v
+            page:Refresh()
+        end,
+    })
+    page:AddDropdown({
+        label   = "Size",
+        indent  = true,                               -- belongs to Enable
+        options = {
+            { value = "small",  label = "Small" },
+            { value = "medium", label = "Medium" },
+            { value = "large",  label = "Large" },
+        },
+        get     = function() return db.size end,
+        set     = function(v) db.size = v end,
+        enabled = function() return db.enabled end,
+    })
+    page:AddSlider({
+        label  = "Scale",
+        min    = 50, max = 150, step = 10,
+        format = function(v) return v .. "%" end,
+        get    = function() return db.scale end,
+        set    = function(v) db.scale = v end,
+    })
+    page:Register()
+
+    SLASH_MYADDON1 = "/myaddon"
+    SlashCmdList.MYADDON = function() page:Open() end
+end)]==],
+    },
+    {
+        key = "embedding", name = "Embedding AlnUI",
+        text = "AlnUI is two files: Libs/AlnUI.lua for windows and widgets, and Libs/AlnUISettings.lua "
+            .. "for an options page in the game's Settings. Copy the ones you need into your addon and "
+            .. "load them before your own files. It is made for Retail and WoW Forever. Parts that need "
+            .. "templates some clients lack (tabs, the modern dropdown, the modern and tooltip themes) "
+            .. "check for them first.",
+        features = {
+            "List Libs/AlnUI.lua, then Libs/AlnUISettings.lua, in your .toc before the files that use AlnUI",
+            "An addon with only an options page needs only Libs/AlnUISettings.lua",
             "Every addon that embeds it shares the global AlnUI table; the newest copy loaded is the one used, whatever the load order",
             "AlnUI.version is the version in use and AlnUI.loadedFrom the addon whose copy it is",
+            "Libs/AlnUISettings.lua has its own: AlnUI.settingsVersion and AlnUI.settingsLoadedFrom",
             "So a new version must keep everything older ones offered: add options and functions, never remove or rename them",
             "Constructors take an opts table whose fields are all optional",
             "They return the Blizzard widget itself, with AlnUI's methods added to it",
             "Fields starting with aln are AlnUI's own bookkeeping: read them, do not set them",
-            "Libs/AlnUI.lua is organized in numbered sections with a table of contents at the top",
         },
         demo = "",
         example = function(p)
@@ -1870,6 +1977,7 @@ AlnUI:ShowToast({
 ## Title: My Addon
 
 Libs/AlnUI.lua
+Libs/AlnUISettings.lua   -- only if it has an options page
 MyAddon.lua
 
 -- MyAddon.lua ------------------------------------------------
@@ -1898,6 +2006,7 @@ local GROUPS = {
     { name = "Buttons and inputs", topics = { "button", "iconbutton", "checkbox", "radiogroup",
                                               "slider", "editbox", "dropdown" } },
     { name = "Status and alerts",  topics = { "progressbar", "toast" } },
+    { name = "Options",            topics = { "settingspage" } },
     { name = "Examples",           topics = { "replica" } },
     { name = "This addon",         topics = { "demo", "tests" } },
 }

@@ -9,6 +9,7 @@
 ## SavedVariables: AlniarezUIDB
 
 Libs/AlnUI.lua
+Libs/AlnUISettings.lua
 Harness.lua
 
 Tests/Dialog.lua

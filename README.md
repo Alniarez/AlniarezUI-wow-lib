@@ -2,7 +2,7 @@
 
 Guide, tests and demo for AlnUI, my small UI library built on Blizzard's own widgets.
 
-The library is the single file `Libs/AlnUI.lua`. Copy it into an addon and list it in the TOC. If more than one addon has it, the newest version loaded wins.
+The library is `Libs/AlnUI.lua`, plus `Libs/AlnUISettings.lua` for options pages. Copy the files an addon needs into it and list them in the TOC, AlnUI.lua first. An addon with only an options page needs only AlnUISettings.lua. If more than one addon has a file, the newest version loaded wins.
 
 ## Commands
 

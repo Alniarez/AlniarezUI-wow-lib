@@ -31,6 +31,11 @@ T:Describe("AlnUI version", function()
         A.Equal(learn.versionLabel:GetText(), ns.VersionText(), "Learn window's version text")
     end)
 
+    T:It("has a settings pages version, from this folder's copy", function()
+        A.Equal(type(Lib.settingsVersion), "number", "type of AlnUI.settingsVersion")
+        A.Equal(Lib.settingsLoadedFrom, ADDON_NAME, "AlnUI.settingsLoadedFrom")
+    end)
+
     T:It("never tests a copy newer than the one in use", function()
         A.True(AlnUI.version >= Lib.version, "the global AlnUI is never older than the snapshot")
     end)
